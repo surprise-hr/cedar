@@ -128,19 +128,17 @@
         [self as_spied_class:^{
             forwardingTarget = [that forwardingTargetForSelector:selector];
         }];
-
         if (forwardingTarget) {
             [invocation invokeWithTarget:forwardingTarget];
         } else {
             CDRSpyInfo *spyInfo = [CDRSpyInfo spyInfoForObject:self];
-            IMP privateImp = [spyInfo impForSelector:selector];
-            if (privateImp) {
-                [invocation invokeUsingIMP:privateImp];
+            Method originalMethod = class_getInstanceMethod(spyInfo.publicClass, invocation.selector);
+
+            if (originalMethod) {
+                [invocation invokeUsingIMP:method_getImplementation(originalMethod)];
             } else {
-                __block id that = self;
                 [self as_spied_class:^{
                     [invocation invoke];
-                    [spyInfo setSpiedClass:object_getClass(that)];
                 }];
             }
         }
