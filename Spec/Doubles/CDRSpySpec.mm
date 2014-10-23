@@ -4,6 +4,7 @@
 #import "ArgumentReleaser.h"
 #import "ObjectWithProperty.h"
 #import "SimpleKeyValueObserver.h"
+#import "SimpleSelfObserver.h"
 #import "ArgumentReleaser.h"
 #import "ObjectWithValueEquality.h"
 #import "DeallocNotifier.h"
@@ -398,6 +399,18 @@ describe(@"spy_on", ^{
             });
 
             itShouldPlayNiceWithKVO();
+        });
+
+        it(@"should correctly record invocations for methods called as a result of KVO on objects that are observing themselves", ^{
+            SimpleSelfObserver *selfObserver = [[[SimpleSelfObserver alloc] init] autorelease];
+            [selfObserver observeYourself];
+            spy_on(selfObserver);
+
+            [selfObserver mutateObservedProperty];
+
+            [selfObserver stopObservingYourself];
+
+            selfObserver should have_received("sideEffect");
         });
     });
 

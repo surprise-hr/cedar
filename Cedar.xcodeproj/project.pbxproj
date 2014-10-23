@@ -131,6 +131,8 @@
 		6639A78214C50D3000B564B7 /* HaveReceived.h in Copy headers to framework */ = {isa = PBXBuildFile; fileRef = 6639A78014C50D3000B564B7 /* HaveReceived.h */; };
 		6639A78714C540CC00B564B7 /* CDRSpy.mm in Sources */ = {isa = PBXBuildFile; fileRef = 6628FC9B14C4DEC50016652A /* CDRSpy.mm */; };
 		66F00B5214C4D97C00146D88 /* CDRSpySpec.mm in Sources */ = {isa = PBXBuildFile; fileRef = 66F00B5114C4D97C00146D88 /* CDRSpySpec.mm */; };
+		75F4850719F9929200D3DCEF /* SimpleSelfObserver.m in Sources */ = {isa = PBXBuildFile; fileRef = 75F4850619F9929200D3DCEF /* SimpleSelfObserver.m */; };
+		75F4850819F9929200D3DCEF /* SimpleSelfObserver.m in Sources */ = {isa = PBXBuildFile; fileRef = 75F4850619F9929200D3DCEF /* SimpleSelfObserver.m */; };
 		960118BC1434867E00825FFF /* NSBundle+MainBundleHijack.m in Sources */ = {isa = PBXBuildFile; fileRef = 960118BB1434867E00825FFF /* NSBundle+MainBundleHijack.m */; };
 		96158AA2144A91DC005895CE /* DummyModel.m in Sources */ = {isa = PBXBuildFile; fileRef = 96158AA1144A91DC005895CE /* DummyModel.m */; };
 		966E74ED145A6CA0002E8D49 /* ShouldSyntaxSpec.mm in Sources */ = {isa = PBXBuildFile; fileRef = 966E74EC145A6CA0002E8D49 /* ShouldSyntaxSpec.mm */; };
@@ -726,6 +728,8 @@
 		6639A77A14C509FE00B564B7 /* HaveReceivedSpec.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = HaveReceivedSpec.mm; sourceTree = "<group>"; };
 		6639A78014C50D3000B564B7 /* HaveReceived.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HaveReceived.h; sourceTree = "<group>"; };
 		66F00B5114C4D97C00146D88 /* CDRSpySpec.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; lineEnding = 0; path = CDRSpySpec.mm; sourceTree = "<group>"; xcLanguageSpecificationIdentifier = xcode.lang.objcpp; };
+		75F4850519F9929200D3DCEF /* SimpleSelfObserver.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SimpleSelfObserver.h; sourceTree = "<group>"; };
+		75F4850619F9929200D3DCEF /* SimpleSelfObserver.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = SimpleSelfObserver.m; sourceTree = "<group>"; };
 		960118BB1434867E00825FFF /* NSBundle+MainBundleHijack.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = "NSBundle+MainBundleHijack.m"; sourceTree = "<group>"; };
 		96158A87144A915E005895CE /* Cocoa.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Cocoa.framework; path = System/Library/Frameworks/Cocoa.framework; sourceTree = SDKROOT; };
 		96158A8A144A915E005895CE /* AppKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AppKit.framework; path = System/Library/Frameworks/AppKit.framework; sourceTree = SDKROOT; };
@@ -1804,6 +1808,8 @@
 				AEF52C26187F236D00C8D2D8 /* SimpleMultiplier.h */,
 				AE80788B183C71950078C608 /* SimpleKeyValueObserver.h */,
 				AE80788C183C71950078C608 /* SimpleKeyValueObserver.m */,
+				75F4850519F9929200D3DCEF /* SimpleSelfObserver.h */,
+				75F4850619F9929200D3DCEF /* SimpleSelfObserver.m */,
 				AE8F1D901850F6C00059E840 /* CedarObservedObject.h */,
 				4523FFB9BD607306C7ED94A3 /* GData */,
 				4523F1D0182DEAB34B1E7C83 /* ExampleWithPublicRunDates.m */,
@@ -2562,6 +2568,7 @@
 				AEF7302513ECC4AE00786282 /* EqualSpec.mm in Sources */,
 				AED10EBC18F46C0E00950904 /* FooSuperclass.m in Sources */,
 				AEF7302713ECC4AE00786282 /* MutableEqualSpec.mm in Sources */,
+				75F4850719F9929200D3DCEF /* SimpleSelfObserver.m in Sources */,
 				AEF7302C13ECC4E700786282 /* BeEmptySpec.mm in Sources */,
 				1F882AAA180F9B6300533238 /* BeNil_ARCSpec.mm in Sources */,
 				1F47B9A7186D69CD005A8CE1 /* CDROTestReporterSpec.mm in Sources */,
@@ -2677,6 +2684,7 @@
 				AEF7301C13ECC4AE00786282 /* BeCloseToSpec.mm in Sources */,
 				AEF7301E13ECC4AE00786282 /* BeInstanceOfSpec.mm in Sources */,
 				AE807892183C71950078C608 /* SimpleIncrementer.m in Sources */,
+				75F4850819F9929200D3DCEF /* SimpleSelfObserver.m in Sources */,
 				AEF7302013ECC4AE00786282 /* BeNilSpec.mm in Sources */,
 				AEF7302213ECC4AE00786282 /* BeSameInstanceAsSpec.mm in Sources */,
 				AE0721E1187513870031CC42 /* ExistSpec.mm in Sources */,
