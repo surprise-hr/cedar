@@ -302,12 +302,14 @@ describe(@"spy_on", ^{
 
             it(@"should correctly notify other non-spy observers when an existing observer is spied", ^{
                 SimpleKeyValueObserver *neutralObserver = [[[SimpleKeyValueObserver alloc] init] autorelease];
+                spy_on(neutralObserver);
                 [observedObject addObserver:neutralObserver forKeyPath:keyPath options:0 context:NULL];
                 [observedObject addObserver:observer forKeyPath:keyPath options:0 context:NULL];
                 spy_on(observer);
 
                 [observedObject mutateObservedProperty];
                 neutralObserver.lastObservedKeyPath should equal(keyPath);
+                neutralObserver should have_received("nonceMethod");
 
                 [observedObject removeObserver:neutralObserver forKeyPath:keyPath];
                 [observedObject removeObserver:observer forKeyPath:keyPath];

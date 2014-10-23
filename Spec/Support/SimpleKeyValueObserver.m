@@ -13,6 +13,12 @@
 
 - (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary *)change context:(void *)context {
     self.lastObservedKeyPath = keyPath;
+    [self nonceMethod];
+}
+
+- (void)nonceMethod
+{
+    NSLog(@"test nonce");
 }
 
 @end
