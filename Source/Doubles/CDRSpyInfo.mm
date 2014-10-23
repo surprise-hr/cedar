@@ -28,6 +28,17 @@ static char *CDRSpyKey;
     spyInfo.spiedClass = object_getClass(object);
     spyInfo.cedarDouble = [[[CedarDoubleImpl alloc] initWithDouble:object] autorelease];
 
+    Ivar observancesIvar = object_getInstanceVariable((id) [object observationInfo], "_observances", NULL);
+    NSArray *observances = object_getIvar((id) [object observationInfo], observancesIvar);
+    for (id observance in observances) {
+        Ivar observerIvar = object_getInstanceVariable(observance, "_observer", NULL);
+        id observer = object_getIvar(observance, observerIvar);
+        if (observer == object) {
+            spyInfo.isObservingItself = YES;
+            break;
+        }
+    }
+
     [currentSpies__ addObject:spyInfo];
     objc_setAssociatedObject(object, &CDRSpyKey, spyInfo, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
@@ -77,14 +88,14 @@ static char *CDRSpyKey;
         sel_isEqual(selector, @selector(setValue:forKey:)) ||
         sel_isEqual(selector, @selector(valueForKey:)) ||
         sel_isEqual(selector, @selector(willChange:valuesAtIndexes:forKey:)) ||
-        strcmp(class_getName(self.publicClass), class_getName(self.spiedClass))
+        (!self.isObservingItself && strcmp(class_getName(self.publicClass), class_getName(self.spiedClass)))
     );
 
     if (yieldToSpiedClass) {
         return NULL;
     }
 
-    Method originalMethod = class_getInstanceMethod(self.spiedClass, selector);
+    Method originalMethod = class_getInstanceMethod(self.publicClass, selector);
     return method_getImplementation(originalMethod);
 }
 

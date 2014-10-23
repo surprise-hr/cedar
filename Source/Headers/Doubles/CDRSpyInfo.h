@@ -6,6 +6,7 @@
 
 @property (nonatomic, assign) Class publicClass;
 @property (nonatomic, assign) Class spiedClass;
+@property (nonatomic, assign) BOOL isObservingItself;
 @property (nonatomic, retain) CedarDoubleImpl *cedarDouble;
 
 + (void)storeSpyInfoForObject:(id)object;
