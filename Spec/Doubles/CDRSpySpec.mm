@@ -1,11 +1,18 @@
-#import <Cedar/SpecHelper.h>
+#import <Cedar/CDRSpecHelper.h>
 #import "SimpleIncrementer.h"
 #import "ObjectWithForwardingTarget.h"
 #import "ArgumentReleaser.h"
+#import "ObjectWithProperty.h"
+#import "SimpleKeyValueObserver.h"
+#import "ArgumentReleaser.h"
+#import "ObjectWithValueEquality.h"
+#import "DeallocNotifier.h"
 #import <objc/runtime.h>
 
 extern "C" {
 #import "ExpectFailureWithMessage.h"
+#import "ObjectWithCollections.h"
+#import "CedarObservedObject.h"
 }
 
 using namespace Cedar::Matchers;
@@ -21,7 +28,7 @@ describe(@"spy_on", ^{
         incrementer = [[[SimpleIncrementer alloc] init] autorelease];
         spy_on(incrementer);
 
-        [[SpecHelper specHelper].sharedExampleContext setObject:incrementer forKey:@"double"];
+        [[CDRSpecHelper specHelper].sharedExampleContext setObject:incrementer forKey:@"double"];
     });
 
     describe(@"method stubbing", ^{
@@ -67,6 +74,26 @@ describe(@"spy_on", ^{
 
             beforeEach(^{
                 incrementer stub_method("methodWithNumber1:andNumber2:").with(any([NSDecimalNumber class]), arg).and_return(@99);
+            });
+
+            context(@"when invoked with the incorrect class", ^{
+                it(@"should invoke the original method", ^{
+                    [incrementer methodWithNumber1:@2 andNumber2:arg] should equal(2 * [arg floatValue]);
+                });
+            });
+
+            context(@"when invoked with nil", ^{
+                it(@"should invoke the original method", ^{
+                    [incrementer methodWithNumber1:nil andNumber2:arg] should equal(0);
+                });
+            });
+        });
+
+        context(@"with an argument specified as any instance conforming to a specified protocol", ^{
+            NSNumber *arg = @123;
+
+            beforeEach(^{
+                incrementer stub_method("methodWithNumber1:andNumber2:").with(any(@protocol(InheritedProtocol)), arg).and_return(@99);
             });
 
             context(@"when invoked with the incorrect class", ^{
@@ -156,10 +183,50 @@ describe(@"spy_on", ^{
         incrementer.description should contain(@"SimpleIncrementer");
     });
 
+    describe(@"spying on an object that uses value-based equality checking", ^{
+        __block ObjectWithValueEquality *ordinaryObject, *spiedObject, *anotherSpiedObject;
+
+        beforeEach(^{
+            ordinaryObject = [[[ObjectWithValueEquality alloc] initWithInteger:42] autorelease];
+            spiedObject = [[[ObjectWithValueEquality alloc] initWithInteger:42] autorelease];
+            anotherSpiedObject = [[[ObjectWithValueEquality alloc] initWithInteger:42] autorelease];
+            spy_on(spiedObject);
+            spy_on(anotherSpiedObject);
+        });
+
+        it(@"should report equality correctly", ^{
+            [spiedObject isEqual:ordinaryObject] should be_truthy;
+            [ordinaryObject isEqual:spiedObject] should be_truthy;
+            [spiedObject isEqual:anotherSpiedObject] should be_truthy;
+        });
+
+        it(@"should return the same hash as the ordinary object", ^{
+            [ordinaryObject hash] should equal([spiedObject hash]);
+        });
+    });
+
     it(@"should only spy on a given object once" , ^{
         [incrementer increment];
         spy_on(incrementer);
         incrementer should have_received("increment");
+    });
+
+    describe(@"spying on an object that supports KVC", ^{
+        it(@"should forward setValue:forKey:", ^{
+            [incrementer setValue:@"42" forKey:@"string"];
+
+            incrementer should have_received(@selector(setValue:forKey:)).with(@"42", @"string");
+
+            incrementer.string should equal(@"42");
+        });
+
+        it(@"should forward valueForKey:", ^{
+            incrementer.string = @"42";
+
+            [incrementer valueForKey:@"string"] should equal(@"42");
+
+            incrementer should have_received(@selector(valueForKey:)).with(@"string");
+        });
     });
 
     describe(@"spying on an object with a forwarding target", ^{
@@ -183,6 +250,183 @@ describe(@"spy_on", ^{
             ^{
                 forwardingObject stub_method("unforwardedUnimplementedMethod");
             } should raise_exception.with_reason([NSString stringWithFormat:@"Attempting to stub method <unforwardedUnimplementedMethod>, which double <%@> does not respond to", [forwardingObject description]]);
+        });
+    });
+
+    describe(@"spying on objects under KVO", ^{
+        __block id observedObject;
+        __block NSString *keyPath;
+        __block SimpleKeyValueObserver *observer;
+
+        void (^itShouldPlayNiceWithKVO)(void) = ^{
+            it(@"should not raise exception when adding or removing an observer", ^{
+                ^{ [observedObject addObserver:observer forKeyPath:keyPath options:0 context:NULL];
+                    [observedObject removeObserver:observer forKeyPath:keyPath context:NULL]; }
+                should_not raise_exception;
+            });
+
+            it(@"should not raise exception when adding or removing an observer", ^{
+                ^{ [observedObject addObserver:observer forKeyPath:keyPath options:0 context:NULL];
+                    [observedObject removeObserver:observer forKeyPath:keyPath context:NULL]; }
+                should_not raise_exception;
+            });
+
+            it(@"should correctly record adding and removing an observer", ^{
+                observedObject should_not have_received("addObserver:forKeyPath:options:context:");
+                observedObject should_not have_received("removeObserver:forKeyPath:context:");
+
+                [observedObject addObserver:observer forKeyPath:keyPath options:0 context:NULL];
+                observedObject should have_received("addObserver:forKeyPath:options:context:");
+
+                [observedObject removeObserver:observer forKeyPath:keyPath context:NULL];
+                observedObject should have_received("removeObserver:forKeyPath:context:");
+            });
+
+            it(@"should record shorthand method for removing an observer", ^{
+                observedObject should_not have_received("removeObserver:forKeyPath:");
+                [observedObject addObserver:observer forKeyPath:keyPath options:0 context:NULL];
+
+                [observedObject removeObserver:observer forKeyPath:keyPath];
+                observedObject should have_received("removeObserver:forKeyPath:");
+            });
+
+            it(@"should not prevent existing observers from recording observations after they are spied upon", ^{
+                [observedObject addObserver:observer forKeyPath:keyPath options:0 context:NULL];
+                spy_on(observer);
+
+                [observedObject mutateObservedProperty];
+                observer should have_received("observeValueForKeyPath:ofObject:change:context:");
+
+                [observedObject removeObserver:observer forKeyPath:keyPath];
+            });
+
+            it(@"should correctly notify other non-spy observers when an existing observer is spied", ^{
+                SimpleKeyValueObserver *neutralObserver = [[[SimpleKeyValueObserver alloc] init] autorelease];
+                [observedObject addObserver:neutralObserver forKeyPath:keyPath options:0 context:NULL];
+                [observedObject addObserver:observer forKeyPath:keyPath options:0 context:NULL];
+                spy_on(observer);
+
+                [observedObject mutateObservedProperty];
+                neutralObserver.lastObservedKeyPath should equal(keyPath);
+
+                [observedObject removeObserver:neutralObserver forKeyPath:keyPath];
+                [observedObject removeObserver:observer forKeyPath:keyPath];
+            });
+
+            it(@"should not notify observers method after being removed", ^{
+                [observedObject addObserver:observer forKeyPath:keyPath options:0 context:NULL];
+                [observedObject removeObserver:observer forKeyPath:keyPath];
+                spy_on(observer);
+
+                [observedObject mutateObservedProperty];
+                observer should_not have_received("observeValueForKeyPath:ofObject:change:context:");
+            });
+        };
+
+        context(@"with a KVO on a simple property", ^{
+            beforeEach(^{
+                keyPath = @"floatProperty";
+                observedObject = [[[ObjectWithProperty alloc] init] autorelease];
+                spy_on(observedObject);
+                observer = [[[SimpleKeyValueObserver alloc] init] autorelease];
+            });
+
+            itShouldPlayNiceWithKVO();
+        });
+
+        context(@"with KVO on an array property", ^{
+            beforeEach(^{
+                keyPath = @"array";
+                observedObject = [[[ObjectWithCollections alloc] init] autorelease];
+                spy_on(observedObject);
+                observer = [[[SimpleKeyValueObserver alloc] init] autorelease];
+            });
+
+            itShouldPlayNiceWithKVO();
+        });
+
+        context(@"with KVO on a set property", ^{
+            beforeEach(^{
+                keyPath = @"set";
+                observedObject = [[[ObjectWithCollections alloc] init] autorelease];
+                spy_on(observedObject);
+                observer = [[[SimpleKeyValueObserver alloc] init] autorelease];
+            });
+
+            itShouldPlayNiceWithKVO();
+        });
+
+        context(@"with KVO on an ordered set property", ^{
+            beforeEach(^{
+                keyPath = @"orderedSet";
+                observedObject = [[[ObjectWithCollections alloc] init] autorelease];
+                spy_on(observedObject);
+                observer = [[[SimpleKeyValueObserver alloc] init] autorelease];
+            });
+
+            itShouldPlayNiceWithKVO();
+        });
+
+        context(@"with a KVO on a simple manual property", ^{
+            beforeEach(^{
+                keyPath = @"manualFloatProperty";
+                observedObject = [[[ObjectWithProperty alloc] init] autorelease];
+                spy_on(observedObject);
+                observer = [[[SimpleKeyValueObserver alloc] init] autorelease];
+            });
+
+            itShouldPlayNiceWithKVO();
+        });
+
+        context(@"with KVO on a manual array", ^{
+            beforeEach(^{
+                keyPath = @"manualArray";
+                observedObject = [[[ObjectWithCollections alloc] init] autorelease];
+                spy_on(observedObject);
+                observer = [[[SimpleKeyValueObserver alloc] init] autorelease];
+            });
+
+            itShouldPlayNiceWithKVO();
+        });
+
+        context(@"with KVO on a manual set", ^{
+            beforeEach(^{
+                keyPath = @"manualSet";
+                observedObject = [[[ObjectWithCollections alloc] init] autorelease];
+                spy_on(observedObject);
+                observer = [[[SimpleKeyValueObserver alloc] init] autorelease];
+            });
+
+            itShouldPlayNiceWithKVO();
+        });
+    });
+
+    it(@"should allow spied upon objects to deallocate normally", ^{
+        __block BOOL wasCalled = NO;
+        DeallocNotifier *notifier = [[DeallocNotifier alloc] initWithNotificationBlock:^{
+            wasCalled = YES;
+        }];
+        spy_on(notifier);
+        [notifier release];
+
+        wasCalled should be_truthy;
+    });
+
+    describe(@"spying on a class", ^{
+        __block NSFileManager *fileManager;
+
+        beforeEach(^{
+            fileManager = nice_fake_for([NSFileManager class]);
+            spy_on([NSFileManager class]);
+            [NSFileManager class] stub_method(@selector(defaultManager)).and_return(fileManager);
+        });
+
+        it(@"should work for stubbing methods", ^{
+            [NSFileManager defaultManager] should be_same_instance_as(fileManager);
+        });
+
+        it(@"should reset state between tests", ^{
+            [(id<CedarDouble>)[NSFileManager defaultManager] sent_messages] should be_empty;
         });
     });
 });

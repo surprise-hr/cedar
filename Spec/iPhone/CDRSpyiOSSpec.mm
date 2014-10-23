@@ -1,6 +1,5 @@
-#import <Foundation/Foundation.h>
-#import "SpecHelper.h"
-#import <objc/runtime.h>
+#import <UIKit/UIKit.h>
+#import "CDRSpecHelper.h"
 
 using namespace Cedar::Matchers;
 using namespace Cedar::Doubles;

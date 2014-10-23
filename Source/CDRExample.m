@@ -1,7 +1,6 @@
 #import "CDRExample.h"
-#import "CDRExampleReporter.h"
-#import "CDRSpecFailure.h"
-#import "SpecHelper.h"
+#import "CDRSpecHelper.h"
+#import "CDRReportDispatcher.h"
 
 const CDRSpecBlock PENDING = nil;
 
@@ -26,6 +25,7 @@ const CDRSpecBlock PENDING = nil;
 }
 
 - (void)dealloc {
+    self.failure = nil;
     [block_ release];
     [super dealloc];
 }
@@ -50,11 +50,26 @@ const CDRSpecBlock PENDING = nil;
     }
 }
 
-- (void)run {
-    NSDate *startDate = [[NSDate alloc] init];
+- (BOOL)isPending {
+    return (self.state == CDRExampleStateIncomplete && block_ == nil) || self.state == CDRExampleStatePending;
+}
+
+- (void)runWithDispatcher:(CDRReportDispatcher *)dispatcher {
+    if (self.state != CDRExampleStateIncomplete) {
+        [[NSException exceptionWithName:NSInternalInconsistencyException
+                                 reason:[NSString stringWithFormat:@"Attempt to run example twice: %@", [self fullText]]
+                               userInfo:nil] raise];
+    }
+
+    [startDate_ release];
+    startDate_ = [[NSDate alloc] init];
+    [dispatcher runWillStartExample:self];
+
     if (!self.shouldRun) {
         self.state = CDRExampleStateSkipped;
-    } else if (block_) {
+    } else if (self.isPending) {
+        self.state = CDRExampleStatePending;
+    } else {
         NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
         @try {
             [parent_ setUp];
@@ -78,11 +93,14 @@ const CDRSpecBlock PENDING = nil;
             }
         }
         [pool drain];
-    } else {
-        self.state = CDRExampleStatePending;
     }
-    runTime_ = -[startDate timeIntervalSinceNow];
-    [startDate release];
+    [endDate_ release];
+    endDate_ = [[NSDate alloc] init];
+
+    [dispatcher runDidFinishExample:self];
+
+    [block_ release];
+    block_ = nil;
 }
 
 #pragma mark Private interface
@@ -91,3 +109,4 @@ const CDRSpecBlock PENDING = nil;
 }
 
 @end
+
