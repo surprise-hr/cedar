@@ -2,30 +2,35 @@
 // Normally you would include this file out of the framework.  However, we're
 // testing the framework here, so including the file from the framework will
 // conflict with the compiler attempting to include the file from the project.
-#import "SpecHelper.h"
+#import "CDRSpecHelper.h"
 #else
-#import <Cedar/SpecHelper.h>
+#import <Cedar/CDRSpecHelper.h>
 #endif
 
 #import "CDRExampleBase.h"
 #import "CDRExampleGroup.h"
 #import "CDRExample.h"
-#import "NoOpKeyValueObserver.h"
+#import "CDRExampleReporter.h"
+#import "SimpleKeyValueObserver.h"
 #import "FibonacciCalculator.h"
+#import "CDRReportDispatcher.h"
+#import <objc/runtime.h>
 
 using namespace Cedar::Matchers;
 using namespace Cedar::Doubles;
 
-extern void (^runInFocusedSpecsMode)(CDRExampleBase *);
+extern void (^runInFocusedSpecsMode)(CDRExampleBase *, CDRReportDispatcher *);
 
 SPEC_BEGIN(CDRExampleGroupSpec)
 
 describe(@"CDRExampleGroup", ^{
     __block CDRExampleGroup *group;
     __block CDRExample *incompleteExample, *pendingExample, *passingExample, *failingExample, *errorExample, *nonFocusedExample;
+    __block CDRReportDispatcher *dispatcher;
     NSString *groupText = @"Group!";
 
     beforeEach(^{
+        dispatcher = nice_fake_for([CDRReportDispatcher class]);
         group = [[[CDRExampleGroup alloc] initWithText:groupText] autorelease];
         incompleteExample = [[[CDRExample alloc] initWithText:@"incomplete" andBlock:^{}] autorelease];
         passingExample = [[[CDRExample alloc] initWithText:@"I should pass" andBlock:^{}] autorelease];
@@ -33,6 +38,64 @@ describe(@"CDRExampleGroup", ^{
         pendingExample = [[[CDRExample alloc] initWithText:@"I should pend" andBlock:nil] autorelease];
         errorExample = [[[CDRExample alloc] initWithText:@"I should raise an error" andBlock:^{ @throw @"wibble"; }] autorelease];
         nonFocusedExample = [[[CDRExample alloc] initWithText:@"I should not be focused" andBlock:^{}] autorelease];
+    });
+
+    describe(@"runWithDispatcher:", ^{
+        beforeEach(^{
+            [group add:passingExample];
+            [group runWithDispatcher:dispatcher];
+        });
+
+        it(@"should tell the reporter the example group is about to start", ^{
+            dispatcher should have_received(@selector(runWillStartExampleGroup:)).with(group);
+        });
+
+        it(@"should report each executed example in the group", ^{
+            dispatcher should have_received(@selector(runWillStartExample:)).with(passingExample);
+            dispatcher should have_received(@selector(runDidFinishExample:)).with(passingExample);
+        });
+
+        it(@"should tell the reporter when the group has finished", ^{
+            dispatcher should have_received(@selector(runDidFinishExampleGroup:)).with(group);
+        });
+
+        describe(@"running it a second time", ^{
+            it(@"should fail", ^{
+                ^{ [group runWithDispatcher:dispatcher]; } should raise_exception.with_reason([NSString stringWithFormat:@"Attempt to run example group twice: %@", [group fullText]]);
+            });
+        });
+
+        describe(@"releasing objects captured in spec blocks", ^{
+            __block __weak id weakCapturedObject;
+
+            beforeEach(^{
+                group = [[[CDRExampleGroup alloc] initWithText:groupText] autorelease];
+
+                NSString *capturedObject = [@"abc" mutableCopy];
+                objc_storeWeak(&weakCapturedObject, capturedObject);
+
+                [group addBefore:^{
+                    [capturedObject length];
+                }];
+                [group addAfter:^{
+                    [capturedObject length];
+                }];
+                group.subjectActionBlock = ^{
+                    [capturedObject length];
+                };
+
+                [capturedObject release]; capturedObject = nil;
+                @autoreleasepool {
+                    objc_loadWeak(&weakCapturedObject) should_not be_nil;
+                }
+
+                [group runWithDispatcher:dispatcher];
+            });
+
+            it(@"should allow captured objects to be deallocated once it has finished running", ^{
+                objc_loadWeak(&weakCapturedObject) should be_nil;
+            });
+        });
     });
 
     describe(@"hasChildren", ^{
@@ -140,7 +203,7 @@ describe(@"CDRExampleGroup", ^{
             [group add:errorExample];
             [group add:failingExample];
             [group add:passingExample];
-            [group run];
+            [group runWithDispatcher:dispatcher];
         });
 
         it(@"should be called after each example runs, regardless of failures or errors", ^{
@@ -176,7 +239,7 @@ describe(@"CDRExampleGroup", ^{
             describe(@"with only passing examples", ^{
                 beforeEach(^{
                     [group add:passingExample];
-                    [group run];
+                    [group runWithDispatcher:dispatcher];
                 });
 
                 it(@"should be CDRExampleStatePassed", ^{
@@ -188,7 +251,7 @@ describe(@"CDRExampleGroup", ^{
             describe(@"with only failing examples", ^{
                 beforeEach(^{
                     [group add:failingExample];
-                    [group run];
+                    [group runWithDispatcher:dispatcher];
                 });
 
                 it(@"should be CDRExampleStateFailed", ^{
@@ -200,7 +263,7 @@ describe(@"CDRExampleGroup", ^{
             describe(@"with only pending examples", ^{
                 beforeEach(^{
                     [group add:pendingExample];
-                    [group run];
+                    [group runWithDispatcher:dispatcher];
                 });
 
                 it(@"should be CDRExampleStatePending", ^{
@@ -213,7 +276,7 @@ describe(@"CDRExampleGroup", ^{
                 beforeEach(^{
                     [group add:passingExample];
                     passingExample.focused = NO;
-                    runInFocusedSpecsMode(group);
+                    runInFocusedSpecsMode(group, dispatcher);
                 });
 
                 it(@"should be CDRExampleStateSkipped", ^{
@@ -225,7 +288,7 @@ describe(@"CDRExampleGroup", ^{
             describe(@"with only error examples", ^{
                 beforeEach(^{
                     [group add:errorExample];
-                    [group run];
+                    [group runWithDispatcher:dispatcher];
                 });
 
                 it(@"should be CDRExampleStateError", ^{
@@ -243,7 +306,7 @@ describe(@"CDRExampleGroup", ^{
                     beforeEach(^{
                         passingExample.focused = YES;
                         [group add:nonFocusedExample];
-                        runInFocusedSpecsMode(group);
+                        runInFocusedSpecsMode(group, dispatcher);
                     });
 
                     it(@"should be CDRExampleStatePassed", ^{
@@ -260,7 +323,7 @@ describe(@"CDRExampleGroup", ^{
                 describe(@"with all other examples passing", ^{
                     beforeEach(^{
                         [group add:passingExample];
-                        [group run];
+                        [group runWithDispatcher:dispatcher];
                     });
 
                     it(@"should be CDRExampleStatePending", ^{
@@ -272,7 +335,7 @@ describe(@"CDRExampleGroup", ^{
                     beforeEach(^{
                         pendingExample.focused = YES;
                         [group add:nonFocusedExample];
-                        runInFocusedSpecsMode(group);
+                        runInFocusedSpecsMode(group, dispatcher);
                     });
 
                     it(@"should be CDRExampleStatePending", ^{
@@ -290,7 +353,7 @@ describe(@"CDRExampleGroup", ^{
                 describe(@"with all other examples passing", ^{
                     beforeEach(^{
                         [group add:passingExample];
-                        [group run];
+                        [group runWithDispatcher:dispatcher];
                     });
 
                     it(@"should be CDRExampleStateFailed", ^{
@@ -301,7 +364,7 @@ describe(@"CDRExampleGroup", ^{
                 describe(@"with at least one pending example", ^{
                     beforeEach(^{
                         [group add:pendingExample];
-                        [group run];
+                        [group runWithDispatcher:dispatcher];
                     });
 
                     it(@"should be CDRExampleStateFailed", ^{
@@ -313,7 +376,7 @@ describe(@"CDRExampleGroup", ^{
                     beforeEach(^{
                         failingExample.focused = YES;
                         [group add:passingExample];
-                        runInFocusedSpecsMode(group);
+                        runInFocusedSpecsMode(group, dispatcher);
                     });
 
                     it(@"should be CDRExampleStateFailed", ^{
@@ -330,7 +393,7 @@ describe(@"CDRExampleGroup", ^{
                 describe(@"with all other examples passing", ^{
                     beforeEach(^{
                         [group add:passingExample];
-                        [group run];
+                        [group runWithDispatcher:dispatcher];
                     });
 
                     it(@"should be CDRExampleStateError", ^{
@@ -341,7 +404,7 @@ describe(@"CDRExampleGroup", ^{
                 describe(@"with at least one failing example", ^{
                     beforeEach(^{
                         [group add:failingExample];
-                        [group run];
+                        [group runWithDispatcher:dispatcher];
                     });
 
                     it(@"should be CDRExampleStateError", ^{
@@ -352,7 +415,7 @@ describe(@"CDRExampleGroup", ^{
                 describe(@"with at least one pending example", ^{
                     beforeEach(^{
                         [group add:pendingExample];
-                        [group run];
+                        [group runWithDispatcher:dispatcher];
                     });
 
                     it(@"should be CDRExampleStateError", ^{
@@ -364,7 +427,7 @@ describe(@"CDRExampleGroup", ^{
                     beforeEach(^{
                         errorExample.focused = YES;
                         [group add:nonFocusedExample];
-                        runInFocusedSpecsMode(group);
+                        runInFocusedSpecsMode(group, dispatcher);
                     });
 
                     it(@"should be CDRExampleStateError", ^{
@@ -391,7 +454,7 @@ describe(@"CDRExampleGroup", ^{
                 [childGroup add:failingExample2];
                 [group add:childGroup];
 
-                [group run];
+                [group runWithDispatcher:dispatcher];
             });
 
             it(@"should mark all passing examples be CDRExampleStateError", ^{
@@ -409,7 +472,7 @@ describe(@"CDRExampleGroup", ^{
             __block id mockObserver;
 
             beforeEach(^{
-                mockObserver = [[[NoOpKeyValueObserver alloc] init] autorelease];
+                mockObserver = [[[SimpleKeyValueObserver alloc] init] autorelease];
                 spy_on(mockObserver);
             });
 
@@ -420,7 +483,7 @@ describe(@"CDRExampleGroup", ^{
 
                 it(@"should report that the state has changed", ^{
                     [group addObserver:mockObserver forKeyPath:@"state" options:0 context:NULL];
-                    [group run];
+                    [group runWithDispatcher:dispatcher];
                     [group removeObserver:mockObserver forKeyPath:@"state"];
 
                     mockObserver should have_received("observeValueForKeyPath:ofObject:change:context:");
@@ -440,29 +503,10 @@ describe(@"CDRExampleGroup", ^{
 
                 it(@"should report that the state has changed", ^{
                     [group addObserver:mockObserver forKeyPath:@"state" options:0 context:NULL];
-                    [group run];
+                    [group runWithDispatcher:dispatcher];
                     [group removeObserver:mockObserver forKeyPath:@"state"];
 
                     mockObserver should have_received("observeValueForKeyPath:ofObject:change:context:");
-                });
-            });
-
-            describe(@"when a child example changes state, but the group state does not change", ^{
-                beforeEach(^{
-                    [group add:failingExample];
-                    [failingExample run];
-
-                    [group add:passingExample];
-                    CDRExampleState state = group.state;
-                    expect(state).to(equal(CDRExampleStateFailed));
-
-                    mockObserver stub_method("observeValueForKeyPath:ofObject:change:context:").and_raise_exception();
-                });
-
-                it(@"should not report that the state has changed", ^{
-                    [group run];
-                    CDRExampleState state = group.state;
-                    expect(state).to(equal(CDRExampleStateFailed));
                 });
             });
         });
@@ -495,7 +539,7 @@ describe(@"CDRExampleGroup", ^{
         describe(@"when the group contains all complete children", ^{
             beforeEach(^{
                 [group add:passingExample];
-                [passingExample run];
+                [passingExample runWithDispatcher:dispatcher];
             });
 
             it(@"should be equal to 1", ^{
@@ -508,9 +552,9 @@ describe(@"CDRExampleGroup", ^{
             beforeEach(^{
                 [group add:incompleteExample];
                 [group add:passingExample];
-                [passingExample run];
+                [passingExample runWithDispatcher:dispatcher];
                 [group add:failingExample];
-                [failingExample run];
+                [failingExample runWithDispatcher:dispatcher];
             });
 
             it(@"should be the mean of the progress of each child", ^{
@@ -542,7 +586,7 @@ describe(@"CDRExampleGroup", ^{
 
         describe(@"when initialized as a root group", ^{
             beforeEach(^{
-                group = [[CDRExampleGroup alloc] initWithText:@"I am a root group" isRoot:YES];
+                group = [[[CDRExampleGroup alloc] initWithText:@"I am a root group" isRoot:YES] autorelease];
             });
 
             it(@"should return false", ^{
@@ -619,7 +663,7 @@ describe(@"CDRExampleGroup", ^{
             __block CDRExampleGroup *rootGroup;
 
             beforeEach(^{
-                rootGroup = [[CDRExampleGroup alloc] initWithText:@"wibble wobble" isRoot:YES];
+                rootGroup = [[[CDRExampleGroup alloc] initWithText:@"wibble wobble" isRoot:YES] autorelease];
                 [rootGroup add:group];
 
                 id<CDRExampleParent> parent = group.parent;
@@ -652,12 +696,12 @@ describe(@"CDRExampleGroup", ^{
         beforeEach(^{
             test = NO;
             FibonacciCalculator *calculator = [[[FibonacciCalculator alloc] init] autorelease];
-            firstExample = [[CDRExample alloc] initWithText:@"I'm Slow!" andBlock:^{
+            firstExample = [[[CDRExample alloc] initWithText:@"I'm Slow!" andBlock:^{
                 [calculator computeFibonnaciNumberVeryVerySlowly:4];
-            }];
-            secondExample = [[CDRExample alloc] initWithText:@"I'm Slower!" andBlock:^{
+            }] autorelease];
+            secondExample = [[[CDRExample alloc] initWithText:@"I'm Slower!" andBlock:^{
                 [calculator computeFibonnaciNumberVeryVerySlowly:5];
-            }];
+            }] autorelease];
 
             exampleGroup = [[[CDRExampleGroup alloc] initWithText:@"I have slow examples"] autorelease];
             [exampleGroup add:firstExample];
@@ -666,7 +710,7 @@ describe(@"CDRExampleGroup", ^{
 
         it(@"should return the running time of the test", ^{
             exampleGroup.runTime should equal(0);
-            [exampleGroup run];
+            [exampleGroup runWithDispatcher:dispatcher];
             exampleGroup.runTime should be_greater_than(0);
             exampleGroup.runTime should be_greater_than_or_equal_to(firstExample.runTime + secondExample.runTime);
         });

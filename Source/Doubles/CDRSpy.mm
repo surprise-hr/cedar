@@ -25,60 +25,91 @@
     if (!instance) {
         @throw [NSException exceptionWithName:NSInternalInconsistencyException reason:@"Cannot stop spying on nil" userInfo:nil];
     }
-    Class originalClass = [instance class];
+    Class originalClass = [CDRSpyInfo spyInfoForObject:instance].spiedClass;
     if ([CDRSpyInfo clearSpyInfoForObject:instance]) {
         object_setClass(instance, originalClass);
     }
 }
 
+#pragma mark - Emulating the original object
+
 - (id)retain {
     __block id that = self;
-    [self as_original_class:^{
+    [self as_spied_class:^{
         [that retain];
     }];
     return self;
 }
 
+- (BOOL)retainWeakReference {
+    __block id that = self;
+    __block BOOL res = NO;
+    [self unsafe_as_spied_class:^{
+        res = [that retainWeakReference];
+    }];
+    return res;
+}
+
 - (oneway void)release {
     __block id that = self;
-    [self as_original_class:^{
+    [self as_spied_class:^{
         [that release];
     }];
 }
 
 - (id)autorelease {
     __block id that = self;
-    [self as_original_class:^{
+    [self as_spied_class:^{
         [that autorelease];
     }];
     return self;
 }
 
 - (NSUInteger)retainCount {
-   __block id that = self;
-   __block NSUInteger count;
-   [self as_original_class:^{
-       count = [that retainCount];
-   }];
-   return count;
+    __block id that = self;
+    __block NSUInteger count = 0;
+    [self as_spied_class:^{
+        count = [that retainCount];
+    }];
+    return count;
 }
 
 - (NSString *)description {
     __block id that = self;
-    __block NSString *description;
-    [self as_original_class:^{
+    __block NSString *description = nil;
+    [self as_spied_class:^{
         description = [that description];
     }];
 
     return description;
 }
 
+- (BOOL)isEqual:(id)object {
+    __block id that = self;
+    __block BOOL isEqual = NO;
+    [self as_spied_class:^{
+        isEqual = [that isEqual:object];
+    }];
+
+    return isEqual;
+}
+
+- (NSUInteger)hash {
+    __block id that = self;
+    __block NSUInteger hash = 0;
+    [self as_spied_class:^{
+        hash = [that hash];
+    }];
+
+    return hash;
+}
+
 - (Class)class {
-    return [CDRSpyInfo originalClassForObject:self];
+    return [CDRSpyInfo publicClassForObject:self];
 }
 
 - (BOOL)isKindOfClass:(Class)aClass {
-    Class originalClass = [CDRSpyInfo originalClassForObject:self];
+    Class originalClass = [CDRSpyInfo publicClassForObject:self];
     return [originalClass isSubclassOfClass:aClass];
 }
 
@@ -93,20 +124,23 @@
         __block id forwardingTarget = nil;
         __block id that = self;
 
-        [self as_original_class:^{
-            forwardingTarget = [that forwardingTargetForSelector:invocation.selector];
+        SEL selector = invocation.selector;
+        [self as_spied_class:^{
+            forwardingTarget = [that forwardingTargetForSelector:selector];
         }];
+
         if (forwardingTarget) {
             [invocation invokeWithTarget:forwardingTarget];
         } else {
-            Class originalClass = [CDRSpyInfo originalClassForObject:self];
-            Method originalMethod = class_getInstanceMethod(originalClass, invocation.selector);
-
-            if (originalMethod) {
-                [invocation invokeUsingIMP:method_getImplementation(originalMethod)];
+            CDRSpyInfo *spyInfo = [CDRSpyInfo spyInfoForObject:self];
+            IMP privateImp = [spyInfo impForSelector:selector];
+            if (privateImp) {
+                [invocation invokeUsingIMP:privateImp];
             } else {
-                [self as_original_class:^{
+                __block id that = self;
+                [self as_spied_class:^{
                     [invocation invoke];
+                    [spyInfo setSpiedClass:object_getClass(that)];
                 }];
             }
         }
@@ -114,9 +148,9 @@
 }
 
 - (NSMethodSignature *)methodSignatureForSelector:(SEL)sel {
-    __block NSMethodSignature *originalMethodSignature;
+    __block NSMethodSignature *originalMethodSignature = nil;
 
-    [self as_original_class:^{
+    [self as_spied_class:^{
         originalMethodSignature = [self methodSignatureForSelector:sel];
     }];
 
@@ -124,9 +158,9 @@
 }
 
 - (BOOL)respondsToSelector:(SEL)selector {
-    __block BOOL respondsToSelector;
+    __block BOOL respondsToSelector = NO;
 
-    [self as_original_class:^{
+    [self as_spied_class:^{
         respondsToSelector = [self respondsToSelector:selector];
     }];
 
@@ -134,16 +168,16 @@
 }
 
 - (void)doesNotRecognizeSelector:(SEL)selector {
-    Class originalClass = [CDRSpyInfo originalClassForObject:self];
+    Class originalClass = [CDRSpyInfo publicClassForObject:self];
     NSString *exceptionReason = [NSString stringWithFormat:@"-[%@ %@]: unrecognized selector sent to spy %p", NSStringFromClass(originalClass), NSStringFromSelector(selector), self];
     @throw [NSException exceptionWithName:NSInvalidArgumentException reason:exceptionReason userInfo:nil];
 }
 
+#pragma mark - CedarDouble
+
 - (BOOL)can_stub:(SEL)selector {
     return [self respondsToSelector:selector] && [self methodSignatureForSelector:selector];
 }
-
-#pragma mark - CedarDouble protocol
 
 - (Cedar::Doubles::StubbedMethod &)add_stub:(const Cedar::Doubles::StubbedMethod &)stubbed_method {
     return [self.cedar_double_impl add_stub:stubbed_method];
@@ -157,29 +191,41 @@
     [self.cedar_double_impl reset_sent_messages];
 }
 
-#pragma mark - Private interface
+#pragma mark - Private
 
 - (CedarDoubleImpl *)cedar_double_impl {
     return [CDRSpyInfo cedarDoubleForObject:self];
 }
 
-- (void)as_class:(Class)klass :(void(^)())block {
-    block = [[block copy] autorelease];
+- (void)as_spied_class:(void(^)())block {
+    CDRSpyInfo *info = [CDRSpyInfo spyInfoForObject:self];
+    Class originalClass = info.spiedClass;
+    if (originalClass != Nil) {
+        Class spyClass = object_getClass(self);
+        object_setClass(self, originalClass);
 
-    Class spyClass = object_getClass(self);
-    object_setClass(self, klass);
-
-    @try {
-        block();
-    } @finally {
-        object_setClass(self, spyClass);
+        @try {
+            block();
+        } @finally {
+            if ([CDRSpyInfo spyInfoForObject:self]) {
+                object_setClass(self, spyClass);
+            }
+        }
     }
 }
 
-- (void)as_original_class:(void(^)())block {
-    Class originalClass = [CDRSpyInfo originalClassForObject:self];
+- (void)unsafe_as_spied_class:(void(^)())block {
+    CDRSpyInfo *info = [CDRSpyInfo spyInfoForObject:self];
+    Class originalClass = info.spiedClass;
     if (originalClass != Nil) {
-        [self as_class:originalClass :block];
+        Class spyClass = object_getClass(self);
+        object_setClass(self, originalClass);
+
+        @try {
+            block();
+        } @finally {
+            object_setClass(self, spyClass);
+        }
     }
 }
 

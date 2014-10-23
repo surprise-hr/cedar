@@ -5,9 +5,17 @@
 	<key>Ancestors</key>
 	<array>
 		<string>com.apple.dt.unit.objectiveCApplication</string>
+		<!-- Xcode 5 -->
 		<string>com.apple.dt.unit.iPhoneBase</string>
 		<string>com.apple.dt.unit.prefixable</string>
+		<!-- Xcode 6 -->
+		<string>com.apple.dt.unit.applicationBase</string>
+		<string>com.apple.dt.unit.iosBase</string>
 	</array>
+    <key>Platforms</key>
+    <array>
+        <string>com.apple.platform.iphoneos</string>
+    </array>
 	<key>Concrete</key>
 	<true/>
 	<key>Definitions</key>
@@ -20,7 +28,7 @@
 			<string>Rakefile</string>
 		</dict>
 		<key>___PACKAGENAME___-Prefix.pch:objC:importCedar</key>
-		<string>#import &lt;Cedar-iOS/SpecHelper.h&gt;</string>
+		<string>#import &lt;Cedar-iOS/Cedar.h&gt;</string>
 		<key>Frameworks/Cedar-iOS.framework</key>
 		<dict>
 			<key>Path</key>
@@ -103,6 +111,16 @@
 #warning &quot;This project uses features only available in iOS SDK ___*___.0 and later.&quot;
 #endif
 </string>
+		<key>main.m:main</key>
+		<dict>
+			<key>Beginning</key>
+			<string>int main(int argc, char * argv[])
+{</string>
+			<key>End</key>
+			<string>}</string>
+			<key>Indent</key>
+			<integer>1</integer>
+		</dict>
 		<key>main.m:main:UIApplicationMain</key>
 		<string>@autoreleasepool {
     return UIApplicationMain(argc, argv, nil, @&quot;CedarApplicationDelegate&quot;);
@@ -127,6 +145,7 @@
 		<string>___PACKAGENAME___-Prefix.pch:objC:importCedar</string>
 		<string>___PACKAGENAME___-Prefix.pch:Availability:iPhoneAvailability</string>
 		<string>Frameworks/Cedar-iOS.framework</string>
+		<string>Default-568h@2x.png</string>
 	</array>
 	<key>Targets</key>
 	<array>
@@ -134,7 +153,7 @@
 			<key>SharedSettings</key>
 			<dict>
 				<key>OTHER_LDFLAGS</key>
-				<string>-ObjC -all_load -lstdc++</string>
+				<string>$(inherited) -ObjC -all_load -lstdc++</string>
 				<key>CODE_SIGN_IDENTITY[sdk=iphoneos*]</key>
 				<string>iPhone Developer</string>
 			</dict>
@@ -156,5 +175,7 @@
 	</array>
 	<key>Description</key>
 	<string>Creates an iOS application which runs Cedar specs.</string>
+	<key>isCedarTemplate</key>
+	<true/>
 </dict>
 </plist>
