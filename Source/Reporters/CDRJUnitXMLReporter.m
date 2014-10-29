@@ -10,8 +10,8 @@
 
 @implementation CDRJUnitXMLReporter
 
-- (id)init {
-    if (self = [super init]) {
+- (instancetype)initWithCedarVersion:(NSString *)cedarVersionString {
+    if (self = [super initWithCedarVersion:(NSString *)cedarVersionString]) {
         successExamples_ = [[NSMutableArray alloc] init];
         failureExamples_ = [[NSMutableArray alloc] init];
         self.namer = [[[CDROTestNamer alloc] init] autorelease];
